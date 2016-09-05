@@ -247,7 +247,7 @@ class ImageShell(shell.Shell):
             if not args:
                 return 'kpartx'
             else:
-                self.stderr.write('kpartx: requires 0 argument, {} are supplied'.
+                self.stderr.write('part-raw: requires 0 argument, {} are supplied'.
                         format(len(args)))
                 self.stderr.write('\n')
         else:
@@ -265,7 +265,7 @@ class ImageShell(shell.Shell):
         if not args:
             return 'kpartx'
         else:
-            self.stderr.write('kpartx: requires 0 argument, {} are supplied'.
+            self.stderr.write('part-all: requires 0 argument, {} are supplied'.
                     format(len(args)))
             self.stderr.write('\n')
 
