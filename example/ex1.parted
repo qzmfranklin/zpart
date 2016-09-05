@@ -1,0 +1,8 @@
+mklabel gpt
+mkpart primary 0 128M
+set 1 boot on
+mkpart logical 300M 1G
+mkpart logical 1.1G 2G
+mkpart logical 2.2G 3.4G
+mkpart logical 3.5G 3.9G
+print -m
