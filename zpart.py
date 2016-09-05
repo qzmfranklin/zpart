@@ -12,6 +12,12 @@ import textwrap
 import time
 import traceback
 
+class KpartxShell(shell.Shell):
+    pass
+
+class LibguestfsShell(shell.Shell):
+    pass
+
 
 class ImageShell(shell.Shell):
 
@@ -20,14 +26,14 @@ class ImageShell(shell.Shell):
 
         self._format = None
         self._size = None
-        self.__update_attrs_by_fname(self._file)
-
-        self.__mtime = datetime.fromtimestamp(os.path.getmtime(self._file))
-        self.__cache = {
+        self.__ls_cache = {
                 'ls-dev': None,
                 'ls-fs': None,
                 'ls-part': None,
         }
+        if os.path.isfile(self._file):
+            self.__update_attrs_by_fname(self._file)
+            self.__mtime = datetime.fromtimestamp(os.path.getmtime(self._file))
 
     def __update_attrs_by_fname(self, fname):
         """Use `qemu-img info` to determine attributes."""
@@ -173,7 +179,7 @@ class ImageShell(shell.Shell):
         if len(args) == 1 and args[0] in self.__ls_subcmd_map.keys():
             subcmd = args[0]
             self.__update_ls_cache(subcmd)
-            print(self.__cache[cache_key])
+            print(self.__ls_cache[cache_key])
         else:
             self.stderr.write('ls: require 1 argument, must be one of {}.'
                     .format(sorted(self.__ls_subcmd_map.keys())))
@@ -181,9 +187,9 @@ class ImageShell(shell.Shell):
 
     def __update_ls_cache(self, subcmd):
             cache_key = 'ls-' + subcmd
-            if not self.__cache[cache_key] or not self._is_cache_valid:
+            if not self.__ls_cache[cache_key] or not self._is_cache_valid:
                 cmdlist = self._virt_cmd + self.__ls_subcmd_map[subcmd]
-                self.__cache[cache_key] = subprocess.check_output(cmdlist).decode()
+                self.__ls_cache[cache_key] = subprocess.check_output(cmdlist).decode()
 
     __ls_subcmd_map = {
             'dev': [ '--blkdevs' ],
@@ -203,10 +209,9 @@ class ImageShell(shell.Shell):
     def do_mount(self, cmd, args):
         """\
         Mount a device or filesystem using guestmount.
-            mount <fs> <mnt>    Mount a filesystem, <fs>, onto a mount point, <mnt>.
-
-        The <fs> must be one of the mountable filesystems, i.e., the ones listed by `ls
-        fs`.
+        mount <fs> <mnt>    Mount a filesystem, <fs>, onto a mount point, <mnt>. The
+                            <fs> must be one of the mountable filesystems, i.e., the
+                            ones listed by `ls fs`.
         """
         if len(args) == 2:
             fs  = args[0]
@@ -226,10 +231,44 @@ class ImageShell(shell.Shell):
         if not args:
             self.__update_ls_cache('fs')
             rawlist = [ x.strip() for x in \
-                    self.__cache['ls-fs'].split('\n') if x ]
+                    self.__ls_cache['ls-fs'].split('\n') if x ]
             return [ x for x in rawlist if x.startswith(text) ]
         elif len(args) == 1:
             return easycompleter.fs.find_matches(text)
+
+    @shell.subshell(KpartxShell, 'part-raw')
+    def do_kpartx(self, cmd, args):
+        """\
+        Partition and format the disk image using kpartx and mkfs tools.
+
+        Usable only when format=raw.
+        """
+        if self._format == 'raw':
+            if not args:
+                return 'kpartx'
+            else:
+                self.stderr.write('kpartx: requires 0 argument, {} are supplied'.
+                        format(len(args)))
+                self.stderr.write('\n')
+        else:
+            self.stderr.write("kpartx: format '{}' is not 'raw'.".
+                    format(self._format))
+            self.stderr.write('\n')
+
+    @shell.subshell(LibguestfsShell, 'part-all')
+    def do_libguestfs(self, cmd, args):
+        """\
+        Partition and format the disk image using libguestfs.
+
+        Usable for disk images of all formats.
+        """
+        if not args:
+            return 'kpartx'
+        else:
+            self.stderr.write('kpartx: requires 0 argument, {} are supplied'.
+                    format(len(args)))
+            self.stderr.write('\n')
+
 
 class ZPartShell(shell.Shell):
 
