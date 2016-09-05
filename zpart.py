@@ -2,6 +2,7 @@
 
 import argparse
 import colored
+from datetime import datetime
 from easyshell import shell
 import easycompleter
 import json
@@ -16,9 +17,17 @@ class ImageShell(shell.Shell):
 
     def __init__(self, *args, **kwargs):
         super(ImageShell, self).__init__(*args, **kwargs)
+
         self._format = None
         self._size = None
         self.__update_attrs_by_fname(self._file)
+
+        self.__mtime = datetime.fromtimestamp(os.path.getmtime(self._file))
+        self.__cache = {
+                'ls-dev': None,
+                'ls-fs': None,
+                'ls-part': None,
+        }
 
     def __update_attrs_by_fname(self, fname):
         """Use `qemu-img info` to determine attributes."""
@@ -115,28 +124,112 @@ class ImageShell(shell.Shell):
                                 Overwrite existing file if any.
         """
         if not args:
-            self.__create()
-            return
+            cmdlist = [
+                    'qemu-img',
+                    'create',
+                    '-f',
+                    self._format,
+                    self._file,
+                    self._size,
+            ]
+            cmdstr = subprocess.list2cmdline(cmdlist)
+            print(cmdstr)
+            subprocess.check_call(cmdlist)
         else:
             self.stderr.write("get: illegal argument '{}', must be one 'force'.")
             self.stderr.write('\n')
 
-    def __create(self):
-        cmdlist = [
-                'qemu-img',
-                'create',
-                '-f',
-                self._format,
-                self._file,
-                self._size,
-        ]
-        cmdstr = subprocess.list2cmdline(cmdlist)
-        print(cmdstr)
-        try:
-            subprocess.check_call(cmdlist)
-        finally:
-            pass
+    @property
+    def _file(self):
+        return self._mode_stack[-1].args[0]
 
+    @property
+    def _is_cache_valid(self):
+        """Check validity of cache by comparing the last modified time.
+
+        If the disk image has been modified since this subshell is created,
+        reset the last modified time and return False. Otherwise return True.
+
+        The return value can be used to determine the validity of the cache.
+        True = cache is valid, False = otherwise.
+
+        TODO: The name of this method is not fully reflective what its function.
+        """
+        mtime = datetime.fromtimestamp(os.path.getmtime(self._file))
+        if mtime == self.__mtime:
+            return True
+        else:
+            self.__mtime = mtime
+            return False
+
+    @shell.command('ls')
+    def do_ls(self, cmd, args):
+        """\
+        List information the disk image.
+            ls dev              List devices, e.g., /dev/sda.
+            ls fs               List mountable filesystems, e.g., /dev/sda1.
+            ls part             List partitions, e.g., /dev/sda1.
+        """
+        if len(args) == 1 and args[0] in self.__ls_subcmd_map.keys():
+            subcmd = args[0]
+            self.__update_ls_cache(subcmd)
+            print(self.__cache[cache_key])
+        else:
+            self.stderr.write('ls: require 1 argument, must be one of {}.'
+                    .format(sorted(self.__ls_subcmd_map.keys())))
+            self.stderr.write('\n')
+
+    def __update_ls_cache(self, subcmd):
+            cache_key = 'ls-' + subcmd
+            if not self.__cache[cache_key] or not self._is_cache_valid:
+                cmdlist = self._virt_cmd + self.__ls_subcmd_map[subcmd]
+                self.__cache[cache_key] = subprocess.check_output(cmdlist).decode()
+
+    __ls_subcmd_map = {
+            'dev': [ '--blkdevs' ],
+            'fs': [ '--filesystems' ],
+            'part': [ '--partitions' ],
+    }
+    @property
+    def _virt_cmd(self):
+        return [ 'sudo', 'virt-filesystems', '-a', self._file ]
+
+    @shell.completer('ls')
+    def complete_ls(self, cmd, args, text):
+        if not args:
+            return [ x for x in self.__ls_subcmd_map.keys() if x.startswith(text) ]
+
+    @shell.command('mount')
+    def do_mount(self, cmd, args):
+        """\
+        Mount a device or filesystem using guestmount.
+            mount <fs> <mnt>    Mount a filesystem, <fs>, onto a mount point, <mnt>.
+
+        The <fs> must be one of the mountable filesystems, i.e., the ones listed by `ls
+        fs`.
+        """
+        if len(args) == 2:
+            fs  = args[0]
+            mnt = args[1]
+            cmdlist = [ 'sudo', 'guestmount', '-o', 'allow_other',
+                    '-a', self._file, '-m', fs, mnt, ]
+            cmdstr = subprocess.list2cmdline(cmdlist)
+            print(cmdstr)
+            subprocess.check_call(cmdlist)
+        else:
+            self.stderr.write('mount: 2 arguments are required, {} are supplied'.
+                    format(len(args)))
+            self.stderr.write('\n')
+
+    @shell.completer('mount')
+    def complete_mount(self, cmd, args, text):
+        if not args:
+            self.__update_ls_cache('fs')
+            rawlist = [ x.strip() for x in \
+                    self.__cache['ls-fs'].split('\n') if x ]
+            return [ x for x in rawlist if x.startswith(text) ]
+        elif len(args) == 1:
+            return easycompleter.fs.find_matches(text)
 
 class ZPartShell(shell.Shell):
 
@@ -182,10 +275,14 @@ class ZPartShell(shell.Shell):
     def do_image(self, cmd, args):
         """\
         Select a disk image to work on.
-            image <image>       Select the image by filename, enter a subshell with it.
+            image <file>        Select the image to create/re-create, enter a subshell.
+                                If <file> already exists, its format and size are read
+                                using `qemu-img info`. If <file> does not exist, the
+                                format and size of the image need to be set in the
+                                subshell using the 'set' command.
         """
         if len(args) != 1:
-            self.stderr.write('image: requires 1 argument, {} are supplied.'.
+            self.stderr.write('create: requires 1 argument, {} are supplied.'.
                     format(len(args)))
             self.stderr.write('\n')
             return
