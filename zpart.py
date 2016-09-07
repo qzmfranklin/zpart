@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 import textwrap
+import time
 
 from _image_shell import ImageShell
 
@@ -34,22 +35,37 @@ class ZPartShell(shell.Shell):
     def do_install(self, cmd, args):
         """\
         Install tools that this shell uses.
-            install-tools       sudo apt-get install <prerequisites>.
-        """
-        if not args:
-            apt_cmd = ['sudo', 'apt-get', 'install', '--force-yes', '-y']
-            yellow = colored.fg('yellow')
-            reset = colored.attr('reset')
 
-            cmdlist = apt_cmd + self.__pkgs
-            print(subprocess.list2cmdline(cmdlist))
-            print(yellow +
-                "NOTE: If prompted to configure libguestfs-tools, choose YES." + reset)
-            proc = subprocess.check_call(cmdlist)
-            return
-        else:
+        This command will require sudo and prompt for password.
+        """
+        if args:
             self.stderr.write('install-tools: 0 argument is required, {} are supplied\n'.
                     format(len(args)))
+            return
+
+        # Install packages.
+        apt_cmd = ['sudo', 'apt-get', 'install', '--force-yes', '-y']
+        yellow = colored.fg('yellow')
+        reset = colored.attr('reset')
+
+        cmdlist = apt_cmd + self.__pkgs
+        print(subprocess.list2cmdline(cmdlist))
+        print(yellow +
+            "NOTE: If prompted to configure libguestfs-tools, choose YES." + reset)
+        time.sleep(5)
+        proc = subprocess.check_call(cmdlist)
+
+        # Enable non-root users to use libguestfs tools.
+        cmds= [
+            'sudo chmod +r /boot/vmlinuz-*',
+            'libguestfs-test-tool',
+            'sudo chmod 600 /boot/vmlinuz-*',
+            'sudo chmod +r /etc/fuse.conf',
+            "grep '^user_allow_other$' /etc/fuse.conf  ||  "
+                    "( cat user_allow_other | sudo tee /etc/fuse.conf )",
+        ]
+        for cmd in cmds:
+            subprocess.check_call(cmd, shell = True)
 
     @shell.subshell(ImageShell, 'image')
     def do_image(self, cmd, args):

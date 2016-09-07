@@ -1,6 +1,7 @@
 """Internal shell class for zpart."""
 
 from datetime import datetime
+import easycompleter
 from easyshell import shell
 import json
 import os
@@ -277,9 +278,10 @@ class ImageShell(shell.Shell):
     get             Show attributes.
     guestfs         Partition and create filesystem. All formats are allowed.
     ls              Display devices/partitions/filesystems on the disk image.
-    mount           Mount disk image.
+    mount           Mount a filesystem from the disk image.
     parted          Partition. Only raw format can use it.
     set             Set attributes.
+    umount          Umount a filesystem.
     """
 
     def __init__(self, *args, **kwargs):
@@ -454,7 +456,7 @@ class ImageShell(shell.Shell):
     }
     @property
     def _virt_cmd(self):
-        return [ 'sudo', 'virt-filesystems', '-a', self._file ]
+        return [ 'virt-filesystems', '-a', self._file ]
 
     @shell.completer('ls')
     def complete_ls(self, cmd, args, text):
@@ -472,14 +474,41 @@ class ImageShell(shell.Shell):
         if len(args) == 2:
             fs  = args[0]
             mnt = args[1]
-            cmdlist = [ 'sudo', 'guestmount', '-o', 'allow_other',
-                    '-a', self._file, '-m', fs, mnt, ]
+            cmdlist = [ 'guestmount', '-o', 'allow_other',
+                    '-a', self._file, '-m', fs, mnt ]
             cmdstr = subprocess.list2cmdline(cmdlist)
             print(cmdstr)
             subprocess.check_call(cmdlist)
         else:
             self.stderr.write('mount: 2 arguments are required, {} are supplied\n'.
                     format(len(args)))
+
+    @shell.command('umount')
+    def do_umount(self, cmd, args):
+        """\
+        Unmount a filesystem mounted via the 'mount' command.
+
+        umount <mnt>        Unmount <mnt>.
+        """
+        if not args or len(args) > 1:
+            self.stderr.write('umount: 0 argument is required, {} are supplied\n'.
+                    format(len(args)))
+            return
+
+        mnt = args[0]
+        if not os.path.isdir(mnt):
+            self.stderr.write("umount: '{}' is not a directory.\n")
+            return
+
+        cmdlist = [ 'guestunmount', mnt ]
+        cmdstr = subprocess.list2cmdline(cmdlist)
+        print(cmdstr)
+        subprocess.check_call(cmdlist)
+
+    @shell.completer('umount')
+    def complete_umount(self, cmd, args, text):
+        if not args:
+            return easycompleter.fs.find_matches(text)
 
     @shell.completer('mount')
     def complete_mount(self, cmd, args, text):
