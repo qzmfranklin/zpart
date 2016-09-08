@@ -7,16 +7,12 @@ import json
 import os
 import subprocess
 import terminaltables
+import textwrap
 import time
 import traceback
 
-class _PartShellBase(shell.Shell):
-    @property
-    def _file(self):
-        # Use the parent shell's _file property. This is bit of a hack.
-        return self._mode_stack[-1].shell._file
 
-class PartedShell(_PartShellBase):
+class PartedShell(shell.Shell):
     """Create partition table and partitions.
 
         mktbl               Create the partition table.
@@ -24,6 +20,11 @@ class PartedShell(_PartShellBase):
         set                 Set flags for partitions.
         show                Display partition table and partitions, if any.
     """
+
+    @property
+    def _file(self):
+        # Use the parent shell's _file property. This is bit of a hack.
+        return self._mode_stack[-1].shell._file
 
     @shell.command('show')
     def do_show(self, cmd, args):
@@ -267,16 +268,13 @@ class PartedShell(_PartShellBase):
         return [ 'parted', self._file, '-s' ]
 
 
-class GuestfsShell(_PartShellBase):
-    pass
-
 class ImageShell(shell.Shell):
 
     """Manage a disk image.
 
     create          Create disk image.
     get             Show attributes.
-    guestfs         Partition and create filesystem. All formats are allowed.
+    guestfish       Invoke the libguestfs shell, guestfish.
     ls              Display devices/partitions/filesystems on the disk image.
     mount           Mount a filesystem from the disk image.
     parted          Partition. Only raw format can use it.
@@ -537,15 +535,97 @@ class ImageShell(shell.Shell):
             self.stderr.write("parted: format '{}' is not 'raw'.\n".
                     format(self._format))
 
-    @shell.subshell(GuestfsShell, 'guestfs')
-    def do_libguestfs(self, cmd, args):
+    @shell.command('guestfish')
+    def do_guestfish(self, cmd, args):
         """\
-        Partition and format the disk image using libguestfs.
+        Enter the libguestfs shell, guestfish to manage the disk image.
 
         Usable for disk images of all formats.
         """
-        if not args:
-            return 'guestfs'
-        else:
-            self.stderr.write('guestfs: requires 0 argument, {} are supplied\n'.
+        if args:
+            self.stderr.write('parted: requires 0 argument, {} are supplied\n'.
                     format(len(args)))
+            return
+
+        print(textwrap.dedent("""\
+                Most useful commands in the guestfish shell:
+
+                    To get detailed help message for a specific <cmd>:
+                        help <cmd>
+
+                    Start:
+                        run
+
+                    List devices/partitions/filesystems:
+                        list-devices, list-partitions, list-filesystems
+
+                    Zero a device:
+                        zero
+                        zero-device
+
+                    Create and delete partitions, create the partition table:
+                        part-init
+                        part-add
+                        part-del
+
+                    Set attributes of partitions:
+                        part-set-bootable
+                        part-set-name
+
+                    Create file systems:
+                        mkfs, mkfs-b, mkfs-opts
+
+                    Mount and unmount a filesystem:
+                        mount, mount-ro, mount-loop, mount-options
+                        umount, umount-all, umount-local, umount-opts
+
+                    Change the local directory of guestfish itself:
+                        lcd
+
+                    Perform file operations on mounted filesystems:
+                        cat <file>
+                        chmod 0XXX <file>
+                        chown <owner> <group> <file>
+                        cp-a <src> <dst>                    cp -a <src> <dst>
+                        df
+                        df-h                                df -h
+                        du
+                        download <file> <host-file>
+                        edit <file>                         Call $EDITOR to edit <file>
+                        glob rm-f <path>/*                  rm -rf <path>/*
+                        head <file>
+                        head-n <num-lines> <file>
+                        hexdump <file>
+                        ln <target> <linkname>
+                        ln-f <target> <linkname>            ln -f <target> <linkname>
+                        ln-s <target> <linkname>            ln -s <target> <linkname>
+                        ln-sf <target> <linkname>           ln -sf <target> <linkname>
+                        ls <path>
+                        ll <path>                           ls -al
+                        mkdir <path>
+                        mkdir-p <path>                      mkdir -p
+                        mv <src> <dst>
+                        rm <path>
+                        rmdir <dir>
+                        rm-rf <path>                        rm -rf <path>
+                        read-file <file>
+                        read-files <file> ...
+                        readlink <path>
+                        realpath <path>
+                        tail <file>
+                        tail-n <num-lines> <file>
+                        touch <file>
+                        truncate <file>
+                        wc <file>
+                        wc-c <file>                         wc -c <file>
+                        wc-l <file>                         wc -l <file>
+                        wc-w <file>                         wc -w <file>
+                        write <file> <content>              cat <content> > <file>
+                        write-append <file> <content>       cat <content> >> <file>
+
+                    Raid related commands:
+                        md-create
+                        md-detail
+                        md-stop
+                """))
+        subprocess.check_call([ 'guestfish', '-a', self._file ])
