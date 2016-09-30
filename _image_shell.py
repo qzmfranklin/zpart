@@ -519,7 +519,7 @@ class ImageShell(shell.Shell):
                         zero-device
 
                     Create and delete partitions, create the partition table:
-                        part-init
+                        part-init                           create partition table
                         part-add
                         part-del
 
