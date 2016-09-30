@@ -26,7 +26,7 @@ class PartedShell(shell.Shell):
         # Use the parent shell's _file property. This is bit of a hack.
         return self._mode_stack[-1].shell._file
 
-    @shell.command('show')
+    @shell.command('show', nargs = 0)
     def do_show(self, cmd, args):
         """Display the partition table.
         """
@@ -107,7 +107,7 @@ class PartedShell(shell.Shell):
         return data
 
     __tbl_fmts = [ 'bsd', 'dvh', 'gpt', 'loop', 'mac', 'msdos', 'pc98', 'sun', ]
-    @shell.command('mktbl')
+    @shell.command('mktbl', nargs = 1)
     def do_mktbl(self, cmd, args):
         """\
         Create parition tabel.
@@ -121,11 +121,6 @@ class PartedShell(shell.Shell):
         WARNING: This operation will erase all data on the disk image without prompting
         for confirmation.
         """
-        if len(args) != 1:
-            self.stderr.write('mktbl: requires 1 arguments, {} are supplied.\n'.
-                    format(len(args)))
-            return
-
         fmt = args[0]
         if not fmt in self.__tbl_fmts:
             self.stderr.write("mktbl: '{}' is not one of {}\n".
@@ -141,7 +136,7 @@ class PartedShell(shell.Shell):
 
 
     __mkpart_types = [ 'primary', 'logical', 'extended', ]
-    @shell.command('mkpart')
+    @shell.command('mkpart', nargs = 3)
     def do_mkpart(self, cmd, args):
         """\
         Create a new partition.
@@ -158,11 +153,6 @@ class PartedShell(shell.Shell):
         from the ones that are used to create the partition. This is due to alignment
         considerations.
         """
-        if len(args) != 3:
-            self.stderr.write('mkpart: require 3 arguments, {} were supplied\n'.
-                    format(len(args)))
-            return
-
         type = args[0]
         if not type in self.__mkpart_types:
             self.stderr.write("mkpart: '{}' is not one of {}.\n".
@@ -187,7 +177,7 @@ class PartedShell(shell.Shell):
             'legacy_boot',
             'palo',
     ]
-    @shell.command('set')
+    @shell.command('set', nargs = 3)
     def do_set(self, cmd, args):
         """\
         Set flags for partitions.
@@ -203,11 +193,6 @@ class PartedShell(shell.Shell):
 
         To display flags for partitions, use the 'show' command.
         """
-        if len(args) != 3:
-            self.stderr.write('set: require 3 arguments, {} are supplied.\n'.
-                    format(len(args)))
-            return
-
         id, flag, state = args
 
         ids = self._ids
@@ -311,7 +296,7 @@ class ImageShell(shell.Shell):
     def _file(self):
         return self._mode_stack[-1].args[0]
 
-    @shell.command('set')
+    @shell.command('set', nargs = 2)
     def do_set(self, cmd, args):
         """\
         Set a disk attribute.
@@ -328,11 +313,6 @@ class ImageShell(shell.Shell):
 
         To see the current values of attributes, use the 'get' command.
         """
-        if len(args) != 2:
-            self.stderr.write('set: requires 2 arguments, {} are supplied.\n'.
-                    format(len(args)))
-            return
-
         attr = args[0]
         if not attr in self.__attrs:
             self.stderr.write("get: illegal argument '{}', must be one of {}.\n".
@@ -349,7 +329,7 @@ class ImageShell(shell.Shell):
             return [ x for x in {'qcow2', 'raw'} if x.startswith(text) ]
 
     __attrs = [ 'file', 'format', 'size', ]
-    @shell.command('get')
+    @shell.command('get', nargs = '?')
     def do_show(self, cmd, args):
         """\
         Show disk attribute(s).
@@ -361,10 +341,6 @@ class ImageShell(shell.Shell):
         if not args:
             for attr in self.__attrs:
                 print('{}:\t\t{}'.format(attr, getattr(self, '_' + attr)))
-            return
-        elif len(args) > 1:
-            self.stderr.write('get: requires 0 or 1 argument, {} are supplied.\n'.
-                    format(len(args)))
             return
 
         attr = args[0]
@@ -379,27 +355,24 @@ class ImageShell(shell.Shell):
         if not args:
             return [ x for x in self.__attrs if x.startswith(text) ]
 
-    @shell.command('create')
+    @shell.command('create', nargs = 0)
     def do_create(self, cmd, args):
         """\
         Use qemu-img to create disk image.
             create              Create the disk image if the file does not exist.
                                 Overwrite existing file if any.
         """
-        if not args:
-            cmdlist = [
-                    'qemu-img',
-                    'create',
-                    '-f',
-                    self._format,
-                    self._file,
-                    self._size,
-            ]
-            cmdstr = subprocess.list2cmdline(cmdlist)
-            print(cmdstr)
-            subprocess.check_call(cmdlist)
-        else:
-            self.stderr.write("get: illegal argument '{}', must be one 'force'.\n")
+        cmdlist = [
+                'qemu-img',
+                'create',
+                '-f',
+                self._format,
+                self._file,
+                self._size,
+        ]
+        cmdstr = subprocess.list2cmdline(cmdlist)
+        print(cmdstr)
+        subprocess.check_call(cmdlist)
 
     @property
     def _file(self):
@@ -424,7 +397,7 @@ class ImageShell(shell.Shell):
             self.__mtime = mtime
             return False
 
-    @shell.command('ls')
+    @shell.command('ls', nargs = 1)
     def do_ls(self, cmd, args):
         """\
         List information the disk image.
@@ -432,14 +405,14 @@ class ImageShell(shell.Shell):
             ls fs               List mountable filesystems, e.g., /dev/sda1.
             ls part             List partitions, e.g., /dev/sda1.
         """
-        if len(args) == 1 and args[0] in self.__ls_subcmd_map.keys():
+        if args[0] in self.__ls_subcmd_map.keys():
             subcmd = args[0]
             self.__update_ls_cache(subcmd)
             cache_key = 'ls-' + subcmd
             print(self.__ls_cache[cache_key])
         else:
-            self.stderr.write('ls: require 1 argument, must be one of {}.\n'
-                    .format(sorted(self.__ls_subcmd_map.keys())))
+            self.stderr.write('ls: {} is not one of {}.\n'
+                    .format(args[0], sorted(self.__ls_subcmd_map.keys())))
 
     def __update_ls_cache(self, subcmd):
             cache_key = 'ls-' + subcmd
@@ -461,7 +434,7 @@ class ImageShell(shell.Shell):
         if not args:
             return [ x for x in self.__ls_subcmd_map.keys() if x.startswith(text) ]
 
-    @shell.command('mount')
+    @shell.command('mount', nargs = 2)
     def do_mount(self, cmd, args):
         """\
         Mount a device or filesystem using guestmount.
@@ -469,30 +442,21 @@ class ImageShell(shell.Shell):
                             <fs> must be one of the mountable filesystems, i.e., the
                             ones listed by `ls fs`.
         """
-        if len(args) == 2:
-            fs  = args[0]
-            mnt = args[1]
-            cmdlist = [ 'guestmount', '-o', 'allow_other',
-                    '-a', self._file, '-m', fs, mnt ]
-            cmdstr = subprocess.list2cmdline(cmdlist)
-            print(cmdstr)
-            subprocess.check_call(cmdlist)
-        else:
-            self.stderr.write('mount: 2 arguments are required, {} are supplied\n'.
-                    format(len(args)))
+        fs  = args[0]
+        mnt = args[1]
+        cmdlist = [ 'guestmount', '-o', 'allow_other',
+                '-a', self._file, '-m', fs, mnt ]
+        cmdstr = subprocess.list2cmdline(cmdlist)
+        print(cmdstr)
+        subprocess.check_call(cmdlist)
 
-    @shell.command('umount')
+    @shell.command('umount', nargs = 1)
     def do_umount(self, cmd, args):
         """\
         Unmount a filesystem mounted via the 'mount' command.
 
         umount <mnt>        Unmount <mnt>.
         """
-        if not args or len(args) > 1:
-            self.stderr.write('umount: 0 argument is required, {} are supplied\n'.
-                    format(len(args)))
-            return
-
         mnt = args[0]
         if not os.path.isdir(mnt):
             self.stderr.write("umount: '{}' is not a directory.\n")
@@ -518,7 +482,7 @@ class ImageShell(shell.Shell):
         elif len(args) == 1:
             return easycompleter.fs.find_matches(text)
 
-    @shell.subshell(PartedShell, 'parted')
+    @shell.subshell(PartedShell, 'parted', nargs = 0)
     def do_parted(self, cmd, args):
         """\
         Partition and format the disk image using parted and mkfs tools.
@@ -526,27 +490,18 @@ class ImageShell(shell.Shell):
         Usable only when format=raw.
         """
         if self._format == 'raw':
-            if not args:
-                return 'parted'
-            else:
-                self.stderr.write('parted: requires 0 argument, {} are supplied\n'.
-                        format(len(args)))
+            return 'parted'
         else:
             self.stderr.write("parted: format '{}' is not 'raw'.\n".
                     format(self._format))
 
-    @shell.command('guestfish')
+    @shell.command('guestfish', nargs = 0)
     def do_guestfish(self, cmd, args):
         """\
         Enter the libguestfs shell, guestfish to manage the disk image.
 
         Usable for disk images of all formats.
         """
-        if args:
-            self.stderr.write('parted: requires 0 argument, {} are supplied\n'.
-                    format(len(args)))
-            return
-
         print(textwrap.dedent("""\
                 Most useful commands in the guestfish shell:
 

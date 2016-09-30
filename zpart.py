@@ -31,18 +31,13 @@ class ZPartShell(shell.Shell):
             'kpartx',
             'libguestfs-tools',
     ]
-    @shell.command('install-tools')
+    @shell.command('install-tools', nargs = 0)
     def do_install(self, cmd, args):
         """\
         Install tools that this shell uses.
 
         This command will require sudo and prompt for password.
         """
-        if args:
-            self.stderr.write('install-tools: 0 argument is required, {} are supplied\n'.
-                    format(len(args)))
-            return
-
         # Install packages.
         apt_cmd = ['sudo', 'apt-get', 'install', '--force-yes', '-y']
         yellow = colored.fg('yellow')
@@ -67,7 +62,7 @@ class ZPartShell(shell.Shell):
         for cmd in cmds:
             subprocess.check_call(cmd, shell = True)
 
-    @shell.subshell(ImageShell, 'image')
+    @shell.subshell(ImageShell, 'image', nargs = 1)
     def do_image(self, cmd, args):
         """\
         Select a disk image to work on.
@@ -77,10 +72,6 @@ class ZPartShell(shell.Shell):
                                 format and size of the image need to be set in the
                                 subshell using the 'set' command.
         """
-        if len(args) != 1:
-            self.stderr.write('create: requires 1 argument, {} are supplied.\n'.
-                    format(len(args)))
-            return
         image_name = args[0]
         return os.path.basename(image_name)
 
